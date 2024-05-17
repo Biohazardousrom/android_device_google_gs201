@@ -33,10 +33,11 @@ TARGET_CPU_VARIANT := cortex-a55
 TARGET_CPU_VARIANT_RUNTIME := cortex-a55
 
 # Enable 64-bit for non-zygote.
-ZYGOTE_FORCE_64 := true
+ZYGOTE_FORCE_64 := false
 
 # Force any prefer32 targets to be compiled as 64 bit.
-IGNORE_PREFER32_ON_DEVICE := true
+IGNORE_PREFER32_ON_DEVICE := false
+FORCE_MULTILIB_FIRST_ON_DEVICE := false
 
 # Build the 32 bit targets
 TARGET_2ND_ARCH := arm
@@ -53,14 +54,17 @@ BOARD_KERNEL_CMDLINE += cgroup_disable=memory
 BOARD_KERNEL_CMDLINE += rcupdate.rcu_expedited=1 rcu_nocbs=all
 BOARD_KERNEL_CMDLINE += stack_depot_disable=off page_pinner=on
 BOARD_KERNEL_CMDLINE += swiotlb=1024
-BOARD_KERNEL_CMDLINE += disable_dma32=on
+# BOARD_KERNEL_CMDLINE += disable_dma32=on
 BOARD_BOOTCONFIG += androidboot.boot_devices=14700000.ufs
 
 TARGET_NO_BOOTLOADER := true
 TARGET_NO_RADIOIMAGE := true
-
+BOARD_PREBUILT_BOOTIMAGE := $(wildcard $(TARGET_KERNEL_DIR)/boot.img)
+ifneq (,$(BOARD_PREBUILT_BOOTIMAGE))
+TARGET_NO_KERNEL := true
+else
 TARGET_NO_KERNEL := false
-
+endif
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
 BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
@@ -230,7 +234,7 @@ $(call soong_config_set,aoc_audio_func,ext_hidl,true)
 ifneq (,$(filter eng, $(TARGET_BUILD_VARIANT)))
 $(call soong_config_set,aoc_audio_func,dump_usecase_data,true)
 $(call soong_config_set,aoc_audio_func,hal_socket_control,true)
-$(call soong_config_set,aoc_audio_func,record_tunning_keys,true)
+$(call soong_config_set,aoc_audio_func,record_tuning_keys,true)
 endif
 
 ifneq (,$(filter aosp_%,$(TARGET_PRODUCT)))
@@ -291,6 +295,8 @@ BOARD_USES_SCALER_M2M1SHOT := true
 # Device Tree
 BOARD_USES_DT := true
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+BOARD_PREBUILT_DTBIMAGE_DIR := $(TARGET_KERNEL_DIR)
+BOARD_PREBUILT_DTBOIMAGE := $(BOARD_PREBUILT_DTBIMAGE_DIR)/dtbo.img
 
 # PLATFORM LOG
 TARGET_USES_LOGD := true
@@ -371,6 +377,32 @@ BOARD_VENDOR_KERNEL_BOOTIMAGE_PARTITION_SIZE := 0x04000000
 
 # Vendor ramdisk image for kernel development
 BOARD_BUILD_VENDOR_RAMDISK_IMAGE := true
+
+KERNEL_MODULE_DIR := $(TARGET_KERNEL_DIR)
+KERNEL_MODULES := $(wildcard $(KERNEL_MODULE_DIR)/*.ko)
+
+BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(KERNEL_MODULE_DIR)/vendor_dlkm.modules.blocklist
+
+# Prebuilt kernel modules that are *not* listed in vendor_kernel_boot.modules.load
+BOARD_PREBUILT_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES = fips140/fips140.ko
+BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD_EXTRA = $(foreach k,$(BOARD_PREBUILT_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES),$(if $(wildcard $(KERNEL_MODULE_DIR)/$(k)), $(k)))
+KERNEL_MODULES += $(addprefix $(KERNEL_MODULE_DIR)/, $(BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD_EXTRA))
+
+# Kernel modules that are listed in vendor_kernel_boot.modules.load
+BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD_FILE := $(strip $(shell cat $(KERNEL_MODULE_DIR)/vendor_kernel_boot.modules.load))
+ifndef BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD_FILE
+$(error vendor_kernel_boot.modules.load not found or empty)
+endif
+BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD := $(BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD_EXTRA)
+BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD += $(BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD_FILE)
+BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES := $(addprefix $(KERNEL_MODULE_DIR)/, $(BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD_EXTRA))
+BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES += $(addprefix $(KERNEL_MODULE_DIR)/, $(notdir $(BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD_FILE)))
+
+BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(KERNEL_MODULE_DIR)/vendor_dlkm.modules.load))
+ifndef BOARD_VENDOR_KERNEL_MODULES_LOAD
+$(error vendor_dlkm.modules.load not found or empty)
+endif
+BOARD_VENDOR_KERNEL_MODULES := $(KERNEL_MODULES)
 
 # Using BUILD_COPY_HEADERS
 BUILD_BROKEN_USES_BUILD_COPY_HEADERS := true
